@@ -1,0 +1,181 @@
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# ==========================================================
+# --- STEP 1: DATA IMPORTING ---
+# ==========================================================
+data <- read_csv("C:/Users/azeem/Downloads/global_housing_market_extended.csv")
+
+head(data)    
+View(data) 
+
+# FEATURE SELECTION
+data <- data %>%
+  select(Country, Year, `House Price Index`, `Affordability Ratio`, 
+         `Urbanization Rate (%)`, `Population Growth (%)`)
+
+# ==========================================================
+# --- STEP 2: DATA CLEANING ---
+# ==========================================================
+summary(data$`House Price Index`)
+summary(data$`Affordability Ratio`)
+summary(data$`Urbanization Rate (%)`)
+
+# Missing & duplicate values
+colSums(is.na(data))
+sum(duplicated(data))
+
+# OUTLIER DETECTION
+boxplot(data$`House Price Index`, main = "House Price Index", col = "lightblue")
+boxplot(data$`Affordability Ratio`, main = "Affordability Ratio", col = "lightgreen")
+boxplot(data$`Urbanization Rate (%)`, main = "Urbanization Rate (%)", col = "lightpink")
+
+# CLEAN COUNTRY NAMES
+data$Country <- trimws(data$Country)
+sum(grepl("^\\s|\\s$", data$Country))
+sum(grepl("\\s{2,}", data$Country))
+
+str(data)
+
+# ==========================================================
+# --- STEP 3: DATA TRANSFORMATION ---
+# ==========================================================
+
+# Price-to-income ratio
+data <- data %>%
+  mutate(Price_to_Income_Ratio = `House Price Index` / `Affordability Ratio`)
+
+# Urban growth categories
+data <- data %>%
+  mutate(Urban_Growth_Category = case_when(
+    `Urbanization Rate (%)` < 65 ~ "Low Urban Growth",
+    between(`Urbanization Rate (%)`, 65, 79.99) ~ "Medium Urban Growth",
+    `Urbanization Rate (%)` >= 80 ~ "High Urban Growth",
+    TRUE ~ NA_character_
+  ))
+
+# Country-level summary
+city_level_data <- data %>%
+  group_by(Country) %>%
+  summarise(
+    Avg_House_Price_Index = mean(`House Price Index`, na.rm = TRUE),
+    Avg_Affordability_Ratio = mean(`Affordability Ratio`, na.rm = TRUE),
+    Avg_Price_to_Income_Ratio = mean(Price_to_Income_Ratio, na.rm = TRUE),
+    Avg_Urbanization_Rate = mean(`Urbanization Rate (%)`, na.rm = TRUE),
+    Avg_Population_Growth = mean(`Population Growth (%)`, na.rm = TRUE),
+    Urban_Growth_Category = first(Urban_Growth_Category)
+  )
+
+# Print results
+cat("🔹 Sample of transformed data:\n")
+print(head(data, 5))
+
+cat("\n🔹 Country-level aggregated dataset:\n")
+print(city_level_data)
+
+# ==========================================================
+# --- STEP 4: EDA SUMMARY ---
+# ==========================================================
+
+cat("\n===== EDA SUMMARY =====\n")
+summary(data)
+
+cat("\n===== DATA STRUCTURE =====\n")
+str(data)
+
+# Prepare numeric variables
+numeric_data <- data %>% 
+  select(`House Price Index`, `Affordability Ratio`, 
+         Price_to_Income_Ratio, `Urbanization Rate (%)`, 
+         `Population Growth (%)`)
+
+cat("\n===== CORRELATION MATRIX =====\n")
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+print(cor_matrix)
+
+# ==========================================================
+# --- STEP 5: CORRELATION HEATMAP (without reshape2) ---
+# ==========================================================
+
+cor_long <- as.data.frame(cor_matrix) %>%
+  mutate(Var1 = rownames(.)) %>%
+  pivot_longer(-Var1, names_to = "Var2", values_to = "value")
+
+ggplot(cor_long, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(value, 2)), size = 4) +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white") +
+  labs(title = "Correlation Heatmap") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Histogram: House Price Index
+ggplot(data, aes(`House Price Index`)) +
+  geom_histogram(bins = 30, fill = "steelblue") +
+  labs(title = "Distribution of House Price Index",
+       x = "HPI", y = "Count") +
+  theme_minimal()
+
+# Histogram: Affordability Ratio
+ggplot(data, aes(`Affordability Ratio`)) +
+  geom_histogram(bins = 30, fill = "orange") +
+  labs(title = "Distribution of Affordability Ratio",
+       x = "Affordability Ratio", y = "Count") +
+  theme_minimal()
+
+# Histogram: Urbanization Rate
+ggplot(data, aes(`Urbanization Rate (%)`)) +
+  geom_histogram(bins = 30, fill = "purple") +
+  labs(title = "Distribution of Urbanization Rate",
+       x = "Urbanization Rate (%)", y = "Count") +
+  theme_minimal()
+
+ggplot(data, aes(Urban_Growth_Category, `House Price Index`, fill = Urban_Growth_Category)) +
+  geom_boxplot() +
+  labs(title = "House Price Index by Urban Growth Category",
+       x = "Urban Growth Category", y = "House Price Index") +
+  theme_minimal()
+
+ggplot(data, aes(`Urbanization Rate (%)`, `House Price Index`)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  geom_smooth(method = "lm") +
+  labs(title = "Urbanization vs House Price Index",
+       x = "Urbanization Rate (%)",
+       y = "House Price Index") +
+  theme_minimal()
+
+ggplot(data, aes(`Affordability Ratio`, `House Price Index`)) +
+  geom_point(alpha = 0.6, color = "darkgreen") +
+  geom_smooth(method = "lm") +
+  labs(title = "Affordability Ratio vs House Price Index",
+       x = "Affordability Ratio", y = "House Price Index") +
+  theme_minimal()
+
+ggplot(city_level_data, aes(x = reorder(Country, Avg_House_Price_Index), 
+                            y = Avg_House_Price_Index)) +
+  geom_col(fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Average House Price Index by Country",
+       x = "Country", y = "Avg HPI") +
+  theme_minimal()
+
+ggplot(city_level_data, aes(x = reorder(Country, Avg_Affordability_Ratio), 
+                            y = Avg_Affordability_Ratio)) +
+  geom_col(fill = "orange") +
+  coord_flip() +
+  labs(title = "Average Affordability Ratio by Country",
+       x = "Country", y = "Avg Affordability Ratio") +
+  theme_minimal()
+
+ggplot(data, aes(Year, `House Price Index`, color = Country)) +
+  geom_line() +
+  labs(title = "House Price Index Over Years",
+       x = "Year", y = "HPI") +
+  theme_minimal()
+
+install.packages("GGally")
+library(GGally)
+
+GGally::ggpairs(numeric_data)
